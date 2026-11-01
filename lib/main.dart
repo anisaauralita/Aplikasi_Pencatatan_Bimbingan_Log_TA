@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
-import 'screens/home_placeholder.dart';
+import 'screens/main_shell.dart';
 import 'screens/login_screen.dart';
 
 void main() {
@@ -32,7 +32,7 @@ class LogTAApp extends StatelessWidget {
             return const Scaffold(
                 body: Center(child: CircularProgressIndicator()));
           }
-          return auth.isLoggedIn ? const HomePlaceholder() : const LoginScreen();
+          return auth.isLoggedIn ? const MainShell() : const LoginScreen();
         },
       ),
     );
