@@ -27,7 +27,7 @@ class LogTAApp extends StatelessWidget {
         colorSchemeSeed: const Color(0xFF4338CA),
       ),
       home: Consumer<AuthProvider>(
-        builder: (_, auth, __) {
+        builder: (context, auth, child) {
           if (!auth.isInitialized) {
             return const Scaffold(
                 body: Center(child: CircularProgressIndicator()));
