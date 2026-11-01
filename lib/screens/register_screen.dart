@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/auth_widgets.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -44,72 +45,107 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final loading = context.watch<AuthProvider>().isLoading;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Buat Akun Baru')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(children: [
-            TextFormField(
-              controller: _nama,
-              decoration: const InputDecoration(labelText: 'Nama Lengkap'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Nama wajib diisi' : null,
+    return AuthBackground(
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(16),
             ),
-            TextFormField(
-              controller: _nim,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'NIM'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'NIM wajib diisi' : null,
-            ),
-            TextFormField(
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email'),
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) return 'Email wajib diisi';
-                if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v.trim())) {
-                  return 'Format email tidak valid';
-                }
-                return null;
-              },
-            ),
-            TextFormField(
-              controller: _pass,
-              obscureText: _hide,
-              decoration: InputDecoration(
-                labelText: 'Kata Sandi',
-                hintText: 'Minimal 8 karakter',
-                suffixIcon: IconButton(
-                  icon: Icon(_hide ? Icons.visibility : Icons.visibility_off),
-                  onPressed: () => setState(() => _hide = !_hide),
-                ),
+            child: const Icon(Icons.school, size: 32, color: Colors.white),
+          ),
+          const SizedBox(height: 12),
+          const Text('Buat Akun Baru',
+              style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white)),
+          const SizedBox(height: 4),
+          const Text('Daftar untuk mulai mencatat bimbingan tugas akhirmu',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: Colors.white70)),
+          const SizedBox(height: 24),
+          AuthCard(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  AuthField(
+                    label: 'Nama Lengkap',
+                    hint: 'Masukkan nama lengkap',
+                    icon: Icons.person_outline,
+                    controller: _nama,
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Nama wajib diisi'
+                        : null,
+                  ),
+                  AuthField(
+                    label: 'NIM',
+                    hint: 'Nomor Induk Mahasiswa',
+                    icon: Icons.badge_outlined,
+                    controller: _nim,
+                    keyboardType: TextInputType.number,
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'NIM wajib diisi'
+                        : null,
+                  ),
+                  AuthField(
+                    label: 'Email',
+                    hint: 'nama@mahasiswa.ac.id',
+                    icon: Icons.mail_outline,
+                    controller: _email,
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) {
+                        return 'Email wajib diisi';
+                      }
+                      if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                          .hasMatch(v.trim())) {
+                        return 'Format email tidak valid';
+                      }
+                      return null;
+                    },
+                  ),
+                  AuthField(
+                    label: 'Kata Sandi',
+                    hint: 'Buat kata sandi minimal 8 karakter',
+                    icon: Icons.lock_outline,
+                    controller: _pass,
+                    obscure: _hide,
+                    suffix: IconButton(
+                      icon: Icon(
+                          _hide ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                          size: 20),
+                      onPressed: () => setState(() => _hide = !_hide),
+                    ),
+                    validator: (v) => (v == null || v.length < 8)
+                        ? 'Kata sandi minimal 8 karakter'
+                        : null,
+                  ),
+                  AuthButton(text: 'Daftar', loading: loading, onPressed: _submit),
+                ],
               ),
-              validator: (v) => (v == null || v.length < 8)
-                  ? 'Kata sandi minimal 8 karakter'
-                  : null,
             ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: loading ? null : _submit,
-                child: loading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Daftar'),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('Sudah punya akun? ',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF312E81))),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: const Text('Masuk',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: kPrimary)),
               ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Sudah punya akun? Masuk'),
-            ),
-          ]),
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }

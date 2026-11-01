@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/auth_widgets.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -37,54 +38,89 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final loading = context.watch<AuthProvider>().isLoading;
-    return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Form(
-            key: _formKey,
-            child: Column(children: [
-              const Text('LogTA',
-                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
-              const Text('Catat bimbingan dan pantau progres tugas akhirmu'),
-              const SizedBox(height: 32),
-              TextFormField(
-                controller: _email,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Email'),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Email wajib diisi' : null,
-              ),
-              TextFormField(
-                controller: _pass,
-                obscureText: _hide,
-                decoration: InputDecoration(
-                  labelText: 'Kata Sandi',
-                  suffixIcon: IconButton(
-                    icon: Icon(_hide ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () => setState(() => _hide = !_hide),
-                  ),
-                ),
-                validator: (v) => (v == null || v.isEmpty)
-                    ? 'Kata sandi wajib diisi'
-                    : null,
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: loading ? null : _submit,
-                  child: const Text('Masuk'),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const RegisterScreen())),
-                child: const Text('Belum punya akun? Daftar'),
-              ),
-            ]),
+    return AuthBackground(
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.school, size: 44, color: Colors.white),
           ),
-        ),
+          const SizedBox(height: 12),
+          const Text('LogTA',
+              style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white)),
+          const SizedBox(height: 4),
+          const Text('Catat bimbingan dan pantau progres tugas akhirmu',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: Colors.white70)),
+          const SizedBox(height: 28),
+          AuthCard(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Center(
+                    child: Text('Masuk',
+                        style: TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 20),
+                  AuthField(
+                    label: 'Email',
+                    hint: 'nama@mahasiswa.ac.id',
+                    icon: Icons.mail_outline,
+                    controller: _email,
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Email wajib diisi'
+                        : null,
+                  ),
+                  AuthField(
+                    label: 'Kata Sandi',
+                    hint: 'Masukkan kata sandi',
+                    icon: Icons.lock_outline,
+                    controller: _pass,
+                    obscure: _hide,
+                    suffix: IconButton(
+                      icon: Icon(
+                          _hide ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                          size: 20),
+                      onPressed: () => setState(() => _hide = !_hide),
+                    ),
+                    validator: (v) => (v == null || v.isEmpty)
+                        ? 'Kata sandi wajib diisi'
+                        : null,
+                  ),
+                  AuthButton(text: 'Masuk', loading: loading, onPressed: _submit),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('Belum punya akun? ',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF312E81))),
+              GestureDetector(
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const RegisterScreen())),
+                child: const Text('Daftar',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: kPrimary)),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
