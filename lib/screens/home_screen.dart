@@ -1,46 +1,36 @@
 import 'package:flutter/material.dart';
-import 'bab_model.dart';
-import 'status_bab_screen.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import '../services/stats_service.dart';
 
-class DashboardScreen extends StatefulWidget {
-  /// Nama pengguna yang ditampilkan di sapaan. Nanti ambil dari data login.
-  final String nama;
+class HomeScreen extends StatefulWidget {
+  /// Dipanggil saat "Lihat Status Bab" ditekan (pindah ke tab Bab).
+  final VoidCallback? onLihatStatusBab;
 
-  const DashboardScreen({super.key, this.nama = 'Siti'});
+  const HomeScreen({super.key, this.onLihatStatusBab});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _HomeScreenState extends State<HomeScreen> {
   static const _primary = Color(0xFF4338CA);
+  late Future<DashboardStats> _future;
 
   @override
   void initState() {
     super.initState();
+    _muat();
+  }
+
+  void _muat() {
     final id = context.read<AuthProvider>().currentUser!.id;
     _future = StatsService().load(id);
   }
 
-  // ---------- Perhitungan ringkasan ----------
-  int get _babSelesai => daftarBab.where((b) => b.acc).length;
-  int get _revisiSelesai =>
-      daftarBab.fold(0, (jumlah, b) => jumlah + b.revisiSelesai);
-  int get _revisiTotal =>
-      daftarBab.fold(0, (jumlah, b) => jumlah + b.revisiTotal);
-  double get _progresTotal =>
-      daftarBab.isEmpty ? 0 : _babSelesai / daftarBab.length;
-
-  void _lihatStatusBab() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => StatusBabScreen(
-          daftarBab: List.of(daftarBab),
-          onChanged: (_) {}, // TODO: simpan perubahan ke database
-        ),
-      ),
-    );
+  Future<void> _refresh() async {
+    setState(_muat);
+    await _future;
   }
 
   void _keluar() {
@@ -57,7 +47,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              // TODO: hapus sesi login lalu pindah ke LoginScreen
+              context.read<AuthProvider>().logout();
             },
             child: const Text('Keluar', style: TextStyle(color: Colors.red)),
           ),
@@ -75,6 +65,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final nama =
+        context.watch<AuthProvider>().currentUser?.nama.split(' ').first ?? '';
+
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -85,69 +78,90 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       child: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Beranda',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700)),
-                IconButton(
-                  onPressed: _keluar,
-                  icon: const Icon(Icons.logout, color: Colors.white, size: 20),
-                  tooltip: 'Keluar',
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text('Halo, ${widget.nama}',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800)),
-            const SizedBox(height: 2),
-            const Text('Semangat mengerjakan tugas akhirmu',
-                style: TextStyle(color: Colors.white70, fontSize: 12)),
-            const SizedBox(height: 16),
-
-            _kartuProgresTotal(),
-            const SizedBox(height: 12),
-            _kartuStatistik(),
-            const SizedBox(height: 12),
-            _kartuGrafik(),
-            const SizedBox(height: 14),
-
-            // Tombol ekspor
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: _eksporPdf,
-                icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-                label: const Text('Ekspor Kartu Bimbingan ke PDF',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-              ),
-            ),
-          ],
+        child: RefreshIndicator(
+          onRefresh: _refresh,
+          child: FutureBuilder<DashboardStats>(
+            future: _future,
+            builder: (context, snap) {
+              if (snap.connectionState != ConnectionState.done) {
+                return const Center(
+                    child: CircularProgressIndicator(color: Colors.white));
+              }
+              if (snap.hasError) {
+                return ListView(
+                  padding: const EdgeInsets.all(24),
+                  children: [
+                    const SizedBox(height: 80),
+                    Text('Gagal memuat data:\n${snap.error}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white)),
+                  ],
+                );
+              }
+              final s = snap.data!;
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Beranda',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700)),
+                      IconButton(
+                        onPressed: _keluar,
+                        icon: const Icon(Icons.logout,
+                            color: Colors.white, size: 20),
+                        tooltip: 'Keluar',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text('Halo, $nama',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  const Text('Semangat mengerjakan tugas akhirmu',
+                      style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const SizedBox(height: 16),
+                  _kartuProgresTotal(s),
+                  const SizedBox(height: 12),
+                  _kartuStatistik(s),
+                  const SizedBox(height: 12),
+                  _kartuGrafik(s),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: _eksporPdf,
+                      icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                      label: const Text('Ekspor Kartu Bimbingan ke PDF',
+                          style: TextStyle(fontWeight: FontWeight.w600)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
   }
 
-  // ---------- Kartu progres total (donut) ----------
-  Widget _kartuProgresTotal() {
-    final persen = (_progresTotal * 100).round();
+  Widget _kartuProgresTotal(DashboardStats s) {
+    final persen = (s.progresTotal * 100).round();
     return _card(
       child: Row(
         children: [
@@ -164,10 +178,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 6),
                 const Text('Progres Total Tugas Akhir',
                     style: TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w800, height: 1.25)),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        height: 1.25)),
                 const SizedBox(height: 6),
-                Text('$_babSelesai dari ${daftarBab.length} bab selesai',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                Text('${s.babSelesai} dari ${s.totalBab} bab selesai',
+                    style:
+                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
               ],
             ),
           ),
@@ -182,7 +199,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   width: 82,
                   height: 82,
                   child: CircularProgressIndicator(
-                    value: _progresTotal,
+                    value: s.progresTotal,
                     strokeWidth: 10,
                     color: _primary,
                     backgroundColor: const Color(0xFFEEF0FF),
@@ -207,19 +224,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ---------- Kartu statistik (Bab / Revisi / Log) ----------
-  Widget _kartuStatistik() {
+  Widget _kartuStatistik(DashboardStats s) {
     return _card(
       child: IntrinsicHeight(
         child: Row(
           children: [
             _statItem(Icons.menu_book_outlined,
-                '$_babSelesai/${daftarBab.length}', 'Bab'),
+                '${s.babSelesai}/${s.totalBab}', 'Bab'),
             _garis(),
             _statItem(Icons.assignment_outlined,
-                '$_revisiSelesai/$_revisiTotal', 'Revisi'),
+                '${s.revisiSelesai}/${s.totalRevisi}', 'Revisi'),
             _garis(),
-            _statItem(Icons.edit_note, '$jumlahLog', 'Log'),
+            _statItem(Icons.edit_note, '${s.totalLog}', 'Log'),
           ],
         ),
       ),
@@ -243,8 +259,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _garis() => Container(width: 1, color: const Color(0xFFE8EAF2));
 
-  // ---------- Kartu grafik progres per bab ----------
-  Widget _kartuGrafik() {
+  Widget _kartuGrafik(DashboardStats s) {
     const tinggiChart = 150.0;
     const labelY = ['100%', '75%', '50%', '25%', '0%'];
 
@@ -258,7 +273,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const Text('Progres per Bab',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
               InkWell(
-                onTap: _lihatStatusBab,
+                onTap: widget.onLihatStatusBab,
                 child: const Padding(
                   padding: EdgeInsets.symmetric(vertical: 4),
                   child: Text('Lihat Status Bab >',
@@ -271,53 +286,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          SizedBox(
-            height: tinggiChart + 40,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Sumbu Y
-                SizedBox(
-                  width: 34,
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 20),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: labelY
-                              .map((t) => Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(t,
-                                        style: TextStyle(
-                                            fontSize: 9,
-                                            color: Colors.grey.shade500)),
-                                  ))
-                              .toList(),
+          if (s.perBab.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(
+                child: Text('Belum ada bab. Tambahkan di menu Bab.',
+                    style: TextStyle(color: Colors.black45)),
+              ),
+            )
+          else
+            SizedBox(
+              height: tinggiChart + 40,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: 34,
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 20),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: labelY
+                                .map((t) => Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(t,
+                                          style: TextStyle(
+                                              fontSize: 9,
+                                              color: Colors.grey.shade500)),
+                                    ))
+                                .toList(),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
+                        const SizedBox(height: 20),
+                      ],
+                    ),
                   ),
-                ),
-                // Batang per bab
-                Expanded(
-                  child: Row(
-                    children: List.generate(
-                        daftarBab.length, (i) => _batang(i, daftarBab[i])),
+                  Expanded(
+                    child: Row(
+                      children: List.generate(
+                          s.perBab.length, (i) => _batang(i, s.perBab[i])),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _batang(int i, Bab b) {
-    final p = b.progresRevisi.clamp(0.0, 1.0);
+  Widget _batang(int i, ChapterProgress c) {
+    final p = c.persen.clamp(0.0, 1.0);
     final persen = (p * 100).round();
+    final label = c.nomor.isEmpty ? 'Bab ${i + 1}' : c.nomor;
     return Expanded(
       child: Column(
         children: [
@@ -361,7 +384,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 6),
           SizedBox(
             height: 14,
-            child: Text('Bab ${i + 1}',
+            child: Text(label,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600)),
           ),
         ],
@@ -369,7 +393,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ---------- Widget bantu ----------
   Widget _card({required Widget child}) => Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),

@@ -26,7 +26,10 @@ class _MainShellState extends State<MainShell> {
   Widget _page(int i) {
     switch (i) {
       case 0:
-        return DashboardScreen(key: UniqueKey()); // muat ulang tiap kembali ke Beranda
+        return HomeScreen(
+          key: UniqueKey(), // muat ulang tiap kembali ke Beranda
+          onLihatStatusBab: () => setState(() => _index = 1),
+        ); // muat ulang tiap kembali ke Beranda
       case 1:
         return const ProfilTaBabScreen();
       case 2:
