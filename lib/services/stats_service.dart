@@ -1,5 +1,4 @@
-import 'package:sqflite/sqflite.dart';
-import '../database/database_helper.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ChapterProgress {
   final String nomor;
@@ -29,39 +28,38 @@ class DashboardStats {
 }
 
 class StatsService {
-  Future<DashboardStats> load(int userId) async {
-    final db = await DatabaseHelper.instance.database;
+  final _db = FirebaseFirestore.instance;
 
-    final chapters = await db.query('chapters',
-        where: 'user_id = ?', whereArgs: [userId], orderBy: 'id');
+  Future<DashboardStats> load(String uid) async {
+    final base = _db.collection('users').doc(uid);
 
-    final revs = await db.rawQuery('''
-      SELECT r.chapter_id AS cid, r.is_done AS done
-      FROM revisions r JOIN chapters c ON c.id = r.chapter_id
-      WHERE c.user_id = ?''', [userId]);
-
-    final totalLog = Sqflite.firstIntValue(await db.rawQuery(
-            'SELECT COUNT(*) FROM guidance_logs WHERE user_id = ?',
-            [userId])) ??
-        0;
+    final chapters = await base.collection('chapters').get();
+    final revs = await base.collection('revisions').get();
+    final logs = await base.collection('logs').get();
 
     int babSelesai = 0;
     final perBab = <ChapterProgress>[];
-    for (final c in chapters) {
-      final isDone = (c['is_done'] as int) == 1;
+
+    for (final c in chapters.docs) {
+      final data = c.data();
+      final isDone = data['is_done'] == true;
       if (isDone) babSelesai++;
-      final mine = revs.where((r) => r['cid'] == c['id']).toList();
-      final done = mine.where((r) => (r['done'] as int) == 1).length;
+
+      final mine =
+          revs.docs.where((r) => r.data()['chapter_id'] == c.id).toList();
+      final done = mine.where((r) => r.data()['is_done'] == true).length;
       final persen = isDone ? 1.0 : (mine.isEmpty ? 0.0 : done / mine.length);
-      perBab.add(ChapterProgress(c['nomor'] as String, persen));
+
+      perBab.add(ChapterProgress((data['nomor'] ?? '') as String, persen));
     }
 
     return DashboardStats(
-      totalBab: chapters.length,
+      totalBab: chapters.docs.length,
       babSelesai: babSelesai,
-      totalRevisi: revs.length,
-      revisiSelesai: revs.where((r) => (r['done'] as int) == 1).length,
-      totalLog: totalLog,
+      totalRevisi: revs.docs.length,
+      revisiSelesai:
+          revs.docs.where((r) => r.data()['is_done'] == true).length,
+      totalLog: logs.docs.length,
       perBab: perBab,
     );
   }

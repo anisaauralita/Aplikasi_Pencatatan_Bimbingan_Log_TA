@@ -16,7 +16,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    final id = context.read<AuthProvider>().currentUser!.id!;
+    final id = context.read<AuthProvider>().currentUser!.id;
     _future = StatsService().load(id);
   }
 

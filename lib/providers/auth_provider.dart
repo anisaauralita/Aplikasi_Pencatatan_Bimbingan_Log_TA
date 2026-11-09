@@ -1,10 +1,9 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 
 class AuthProvider extends ChangeNotifier {
-  static const _sessionKey = 'session_user_id';
   final _service = AuthService();
 
   UserModel? currentUser;
@@ -15,11 +14,9 @@ class AuthProvider extends ChangeNotifier {
 
   /// Dipanggil saat aplikasi mulai: pulihkan sesi bila ada.
   Future<void> init() async {
-    final prefs = await SharedPreferences.getInstance();
-    final id = prefs.getInt(_sessionKey);
-    if (id != null) {
-      currentUser = await _service.getUserById(id);
-      if (currentUser == null) await prefs.remove(_sessionKey);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      currentUser = await _service.getUserByUid(user.uid);
     }
     isInitialized = true;
     notifyListeners();
@@ -36,24 +33,21 @@ class AuthProvider extends ChangeNotifier {
     return error;
   }
 
-  /// Return true jika login berhasil.
   Future<bool> login(String email, String password) async {
     isLoading = true;
     notifyListeners();
-    final user = await _service.login(email, password);
-    if (user != null) {
-      currentUser = user;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_sessionKey, user.id!);
+    final ok = await _service.login(email, password);
+    if (ok) {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      currentUser = await _service.getUserByUid(uid);
     }
     isLoading = false;
     notifyListeners();
-    return user != null;
+    return ok && currentUser != null;
   }
 
   Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_sessionKey);
+    await _service.logout();
     currentUser = null;
     notifyListeners();
   }

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "33958125050",
+    "project_id": "logta-2f7c6",
+    "storage_bucket": "logta-2f7c6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:33958125050:android:c8cb5aace591a7e5f5d843",
+        "android_client_info": {
+          "package_name": "com.example.logta"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAhPXKy-5YlzEF_zN5NL_tsFQs2DoBn3uk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

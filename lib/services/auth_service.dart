@@ -1,68 +1,54 @@
-import 'dart:convert';
-import 'dart:math';
-import 'package:crypto/crypto.dart';
-import 'package:sqflite/sqflite.dart';
-import '../database/database_helper.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_model.dart';
 
 class AuthService {
-  final _dbHelper = DatabaseHelper.instance;
+  final _auth = FirebaseAuth.instance;
+  final _db = FirebaseFirestore.instance;
 
-  String _generateSalt() {
-    final rnd = Random.secure();
-    final bytes = List<int>.generate(16, (_) => rnd.nextInt(256));
-    return base64Url.encode(bytes);
-  }
-
-  String _hash(String password, String salt) {
-    return sha256.convert(utf8.encode(salt + password)).toString();
-  }
-
-  /// Return null jika sukses, atau pesan error jika gagal.
+  /// Return null jika sukses, atau pesan error.
   Future<String?> register({
     required String nama,
     required String nim,
     required String email,
     required String password,
   }) async {
-    final db = await _dbHelper.database;
-    final emailNorm = email.trim().toLowerCase();
-
-    final existing = await db.query('users',
-        where: 'email = ?', whereArgs: [emailNorm], limit: 1);
-    if (existing.isNotEmpty) return 'Email sudah terdaftar';
-
-    final salt = _generateSalt();
-    final user = UserModel(
-      nama: nama.trim(),
-      nim: nim.trim(),
-      email: emailNorm,
-      passwordHash: _hash(password, salt),
-      salt: salt,
-      createdAt: DateTime.now().toIso8601String(),
-    );
-    await db.insert('users', user.toMap()..remove('id'),
-        conflictAlgorithm: ConflictAlgorithm.abort);
-    return null;
+    try {
+      final cred = await _auth.createUserWithEmailAndPassword(
+          email: email.trim(), password: password);
+      await _db.collection('users').doc(cred.user!.uid).set({
+        'nama': nama.trim(),
+        'nim': nim.trim(),
+        'email': email.trim().toLowerCase(),
+        'created_at': FieldValue.serverTimestamp(),
+      });
+      await _auth.signOut(); // kembali ke Login sesuai flowchart
+      return null;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'email-already-in-use') return 'Email sudah terdaftar';
+      if (e.code == 'weak-password') return 'Kata sandi terlalu lemah';
+      return e.message ?? 'Pendaftaran gagal';
+    } catch (e) {
+      return 'Pendaftaran gagal: $e';
+    }
   }
 
-  /// Return UserModel jika berhasil, null jika email/password salah.
-  Future<UserModel?> login(String email, String password) async {
-    final db = await _dbHelper.database;
-    final rows = await db.query('users',
-        where: 'email = ?',
-        whereArgs: [email.trim().toLowerCase()],
-        limit: 1);
-    if (rows.isEmpty) return null;
-
-    final user = UserModel.fromMap(rows.first);
-    return _hash(password, user.salt) == user.passwordHash ? user : null;
+  /// Return true jika login berhasil.
+  Future<bool> login(String email, String password) async {
+    try {
+      await _auth.signInWithEmailAndPassword(
+          email: email.trim(), password: password);
+      return true;
+    } on FirebaseAuthException {
+      return false;
+    }
   }
 
-  Future<UserModel?> getUserById(int id) async {
-    final db = await _dbHelper.database;
-    final rows =
-        await db.query('users', where: 'id = ?', whereArgs: [id], limit: 1);
-    return rows.isEmpty ? null : UserModel.fromMap(rows.first);
+  Future<UserModel?> getUserByUid(String uid) async {
+    final doc = await _db.collection('users').doc(uid).get();
+    if (!doc.exists) return null;
+    return UserModel.fromMap(uid, doc.data()!);
   }
+
+  Future<void> logout() => _auth.signOut();
 }
