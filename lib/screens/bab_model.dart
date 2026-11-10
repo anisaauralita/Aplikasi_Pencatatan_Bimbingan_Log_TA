@@ -1,6 +1,6 @@
 /// Data satu bab TA.
 /// status: 'Selesai' | 'Berjalan' | 'Belum'
-/// revisiSelesai / revisiTotal nanti diambil dari data Revisi (tab Revisi).
+/// revisiSelesai / revisiTotal diambil dari data Revisi (tab Revisi).
 class Bab {
   final String nama; // contoh: 'Bab 1 - Pendahuluan'
   final String status;
@@ -16,10 +16,16 @@ class Bab {
 
   bool get acc => status == 'Selesai';
 
-  /// 0.0 - 1.0
-double get progresRevisi => acc
-    ? 1.0
-    : (revisiTotal == 0 ? 0 : (revisiSelesai / revisiTotal).clamp(0.0, 1.0));
+  /// Menghitung progres revisi (0.0 - 1.0)
+  /// - Jika status ACC ('Selesai'), otomatis 1.0 (100%).
+  /// - Jika belum ada revisi sama sekali (revisiTotal == 0), bernilai 0.0 (0%).
+  /// - Jika ada revisi, dihitung dari revisiSelesai / revisiTotal.
+  double get progresRevisi {
+    if (acc) return 1.0;
+    if (revisiTotal == 0) return 0.0;
+    return (revisiSelesai / revisiTotal).clamp(0.0, 1.0);
+  }
+
   Bab copyWith({
     String? nama,
     String? status,

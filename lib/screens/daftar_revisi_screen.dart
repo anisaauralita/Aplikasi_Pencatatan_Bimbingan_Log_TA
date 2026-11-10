@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/fs_helper.dart';
 import 'detail_revisi_screen.dart';
 import 'revisi_model.dart';
 import 'tambah_revisi_screen.dart';
@@ -37,10 +38,8 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
   // ---------- Firestore ----------
   Future<void> _muat() async {
     try {
-      final snap = await _base
-          .collection('revisions')
-          .orderBy('created_at', descending: true)
-          .get();
+      final snap = await ambilCepat(
+          _base.collection('revisions').orderBy('created_at', descending: true));
       if (!mounted) return;
       setState(() {
         _ids = snap.docs.map((d) => d.id).toList();
@@ -68,17 +67,41 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
     }
   }
 
+  // Penulisan tanpa menunggu server (tersimpan di HP dulu).
+  // Kalau gagal, errornya tetap ditampilkan.
+  Future<void> _bg(Future<dynamic> f, String pesan) async {
+    try {
+      await f;
+    } catch (e) {
+      _pesan('$pesan: $e');
+    }
+  }
+
+  // Daftar nama bab dari Firestore, format "Bab 1 - Pendahuluan"
+  Future<List<String>> _daftarNamaBab() async {
+    final chapters = await ambilCepat(_base.collection('chapters'));
+    final list = chapters.docs.map((c) {
+      final d = c.data();
+      return '${d['nomor']} - ${d['judul']}';
+    }).toList();
+    int nomor(String s) {
+      final m = RegExp(r'Bab\s*(\d+)').firstMatch(s);
+      return m == null ? 0 : int.parse(m.group(1)!);
+    }
+
+    list.sort((a, b) => nomor(a).compareTo(nomor(b)));
+    return list;
+  }
+
   // Cari id bab yang cocok dengan nama bab pada revisi
   Future<String?> _idBab(String namaBab) async {
-    final chapters = await _base.collection('chapters').get();
+    final chapters = await ambilCepat(_base.collection('chapters'));
     final m = RegExp(r'Bab\s*(\d+)').firstMatch(namaBab);
     final nomor = m == null ? null : 'Bab ${m.group(1)}';
     for (final c in chapters.docs) {
       final d = c.data();
-      final nama = '${d['nomor']} - ${d['judul']}';
-      if (nama == namaBab) return c.id;
+      if ('${d['nomor']} - ${d['judul']}' == namaBab) return c.id;
     }
-    // cadangan: cocokkan lewat nomor bab saja
     if (nomor != null) {
       for (final c in chapters.docs) {
         if (c.data()['nomor'] == nomor) return c.id;
@@ -102,30 +125,99 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
     return daftarRevisi;
   }
 
+  // ---------- Aksi ----------
   Future<void> _tambahRevisi() async {
+    final namaBab = await _daftarNamaBab();
+    if (!mounted) return;
+    if (namaBab.isEmpty) {
+      _pesan('Tambahkan bab dulu di tab Bab, baru bisa menambah revisi.');
+      return;
+    }
     final hasil = await Navigator.push<Revisi>(
       context,
-      MaterialPageRoute(builder: (_) => const TambahRevisiScreen()),
+      MaterialPageRoute(builder: (_) => TambahRevisiScreen(opsiBab: namaBab)),
     );
     if (hasil == null || !mounted) return;
-    try {
-      final chapterId = await _idBab(hasil.bab);
-      await _base.collection('revisions').add({
+    final chapterId = await _idBab(hasil.bab);
+    _bg(
+      _base.collection('revisions').add({
         'poin': hasil.poin,
         'bab': hasil.bab,
         'chapter_id': chapterId,
         'is_done': hasil.selesai,
         'foto_path': hasil.fotoPath,
         'created_at': FieldValue.serverTimestamp(),
-      });
-      if (chapterId == null) {
-        _pesan('Revisi tersimpan, tapi bab "${hasil.bab}" tidak ditemukan '
-            'di daftar bab, jadi belum terhitung di progres bab.');
-      }
-      await _muat();
-    } catch (e) {
-      _pesan('Gagal menyimpan revisi: $e');
-    }
+      }),
+      'Gagal menyimpan revisi',
+    );
+    await _muat();
+  }
+
+  Future<void> _editRevisi(Revisi r) async {
+    final index = daftarRevisi.indexOf(r);
+    if (index == -1) return;
+
+    final namaBab = await _daftarNamaBab();
+    if (!mounted) return;
+
+    final hasil = await Navigator.push<Revisi>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TambahRevisiScreen(
+          isEdit: true,
+          opsiBab: namaBab,
+          poinAwal: r.poin,
+          babAwal: r.bab,
+        ),
+      ),
+    );
+    if (hasil == null || !mounted) return;
+
+    final chapterId = await _idBab(hasil.bab);
+    _bg(
+      _base.collection('revisions').doc(_ids[index]).update({
+        'poin': hasil.poin,
+        'bab': hasil.bab,
+        'chapter_id': chapterId,
+      }),
+      'Gagal mengubah revisi',
+    );
+    if (!mounted) return;
+    setState(() {
+      daftarRevisi[index] = r.copyWith(poin: hasil.poin, bab: hasil.bab);
+    });
+  }
+
+  void _hapusRevisi(Revisi r) {
+    final index = daftarRevisi.indexOf(r);
+    if (index == -1) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus revisi?'),
+        content: Text('"${r.poin}" akan dihapus.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _bg(
+                _base.collection('revisions').doc(_ids[index]).delete(),
+                'Gagal menghapus',
+              );
+              setState(() {
+                daftarRevisi.removeAt(index);
+                _ids.removeAt(index);
+              });
+            },
+            child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _bukaDetail(Revisi r) {
@@ -136,22 +228,22 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
       MaterialPageRoute(
         builder: (_) => DetailRevisiScreen(
           revisi: r,
-          onChanged: (baru) async {
+          onChanged: (baru) {
             setState(() => daftarRevisi[index] = baru);
-            try {
-              await _base.collection('revisions').doc(_ids[index]).update({
+            _bg(
+              _base.collection('revisions').doc(_ids[index]).update({
                 'is_done': baru.selesai,
                 'foto_path': baru.fotoPath,
-              });
-            } catch (e) {
-              _pesan('Gagal menyimpan perubahan: $e');
-            }
+              }),
+              'Gagal menyimpan perubahan',
+            );
           },
         ),
       ),
     );
   }
 
+  // ---------- Build ----------
   @override
   Widget build(BuildContext context) {
     final tampil = _tampil;
@@ -175,7 +267,6 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
         ),
         child: SafeArea(
           bottom: false,
-          // Di layar lebar, konten dibatasi 640 px dan dipusatkan
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 640),
@@ -311,15 +402,48 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
                       Icon(Icons.photo_camera_outlined,
                           size: 13, color: Colors.grey.shade600),
                       const SizedBox(width: 4),
-                      Text('1 foto bukti',
+                      Text('1 foto',
                           style: TextStyle(
                               fontSize: 10.5, color: Colors.grey.shade600)),
+                      const SizedBox(width: 8),
                     ],
+                    _aksiKecil(Icons.edit_outlined, 'Edit',
+                        Colors.grey.shade700, Colors.white,
+                        Colors.grey.shade300, () => _editRevisi(r)),
+                    const SizedBox(width: 6),
+                    _aksiKecil(Icons.delete_outline, 'Hapus', Colors.red,
+                        const Color(0xFFFDECEC), const Color(0xFFF8C9C9),
+                        () => _hapusRevisi(r)),
                   ],
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _aksiKecil(IconData icon, String label, Color fg, Color bg,
+      Color border, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: border),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 13, color: fg),
+            const SizedBox(width: 3),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 10.5, fontWeight: FontWeight.w600, color: fg)),
+          ],
         ),
       ),
     );

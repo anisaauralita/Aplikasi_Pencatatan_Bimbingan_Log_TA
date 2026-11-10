@@ -1,11 +1,22 @@
 import 'package:flutter/material.dart';
 import 'revisi_model.dart';
 
+const List<String> opsiBabContoh = ['Bab 1', 'Bab 2', 'Bab 3', 'Bab 4', 'Bab 5'];
+
 /// Hasil (lewat Navigator.pop): Revisi
 class TambahRevisiScreen extends StatefulWidget {
+  final bool isEdit;
   final List<String> opsiBab;
+  final String? poinAwal;
+  final String? babAwal;
 
-  const TambahRevisiScreen({super.key, this.opsiBab = opsiBabContoh});
+  const TambahRevisiScreen({
+    super.key,
+    this.isEdit = false,
+    this.opsiBab = opsiBabContoh,
+    this.poinAwal,
+    this.babAwal,
+  });
 
   @override
   State<TambahRevisiScreen> createState() => _TambahRevisiScreenState();
@@ -15,13 +26,21 @@ class _TambahRevisiScreenState extends State<TambahRevisiScreen> {
   static const _primary = Color(0xFF4338CA);
 
   final _formKey = GlobalKey<FormState>();
-  final _poinC = TextEditingController();
+  late final TextEditingController _poinC;
   String? _bab;
 
   @override
   void initState() {
     super.initState();
-    if (widget.opsiBab.isNotEmpty) _bab = widget.opsiBab.first;
+    // Isi otomatis teks jika dalam mode edit
+    _poinC = TextEditingController(text: widget.poinAwal ?? '');
+
+    // Atur bab terpilih (prioritas: babAwal -> opsi pertama -> null)
+    if (widget.babAwal != null && widget.opsiBab.contains(widget.babAwal)) {
+      _bab = widget.babAwal;
+    } else if (widget.opsiBab.isNotEmpty) {
+      _bab = widget.opsiBab.first;
+    }
   }
 
   @override
@@ -36,7 +55,6 @@ class _TambahRevisiScreenState extends State<TambahRevisiScreen> {
       context,
       Revisi(poin: _poinC.text.trim(), bab: _bab!),
     );
-    // TODO: simpan juga ke database lewat database_helper.dart
   }
 
   Widget _label(String text) => Padding(
@@ -55,8 +73,8 @@ class _TambahRevisiScreenState extends State<TambahRevisiScreen> {
         backgroundColor: _primary,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Tambah Revisi',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        title: Text(widget.isEdit ? 'Edit Revisi' : 'Tambah Revisi',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
       ),
       body: Container(
         decoration: const BoxDecoration(
@@ -146,8 +164,8 @@ class _TambahRevisiScreenState extends State<TambahRevisiScreen> {
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text('Simpan Revisi',
-                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    child: Text(widget.isEdit ? 'Simpan Perubahan' : 'Simpan Revisi',
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
                   ),
                 ),
                 const SizedBox(height: 10),

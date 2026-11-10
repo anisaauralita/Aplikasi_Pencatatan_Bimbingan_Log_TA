@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/fs_helper.dart';
 import 'log_model.dart';
 import 'tambah_log_screen.dart';
 
@@ -37,7 +38,8 @@ class _LogBimbinganScreenState extends State<LogBimbinganScreen> {
   // ---------- Firestore ----------
   Future<void> _muat() async {
     try {
-      final snap = await _logs.orderBy('tanggal', descending: true).get();
+      final snap =
+          await ambilCepat(_logs.orderBy('tanggal', descending: true));
       if (!mounted) return;
       setState(() {
         _ids = snap.docs.map((d) => d.id).toList();
@@ -66,22 +68,30 @@ class _LogBimbinganScreenState extends State<LogBimbinganScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(teks)));
   }
 
+  // Jalankan penulisan tanpa menunggu server (tersimpan di HP dulu)
+  Future<void> _bg(Future<dynamic> f, String pesan) async {
+    try {
+      await f;
+    } catch (e) {
+      _pesan('$pesan: $e');
+    }
+  }
+
   Future<void> _tambahLog() async {
     final hasil = await Navigator.push<LogBimbingan>(
       context,
       MaterialPageRoute(builder: (_) => const TambahLogScreen()),
     );
     if (hasil == null || !mounted) return;
-    try {
-      await _logs.add({
+    _bg(
+      _logs.add({
         'tanggal': Timestamp.fromDate(hasil.tanggal),
         'catatan': hasil.catatan,
         'created_at': FieldValue.serverTimestamp(),
-      });
-      await _muat();
-    } catch (e) {
-      _pesan('Gagal menyimpan log: $e');
-    }
+      }),
+      'Gagal menyimpan log',
+    );
+    await _muat();
   }
 
   Future<void> _editLog(int index) async {
@@ -97,15 +107,14 @@ class _LogBimbinganScreenState extends State<LogBimbinganScreen> {
       ),
     );
     if (hasil == null || !mounted) return;
-    try {
-      await _logs.doc(_ids[index]).update({
+    _bg(
+      _logs.doc(_ids[index]).update({
         'tanggal': Timestamp.fromDate(hasil.tanggal),
         'catatan': hasil.catatan,
-      });
-      await _muat();
-    } catch (e) {
-      _pesan('Gagal mengubah log: $e');
-    }
+      }),
+      'Gagal mengubah log',
+    );
+    await _muat();
   }
 
   void _hapusLog(int index) {
@@ -123,12 +132,8 @@ class _LogBimbinganScreenState extends State<LogBimbinganScreen> {
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              try {
-                await _logs.doc(_ids[index]).delete();
-                await _muat();
-              } catch (e) {
-                _pesan('Gagal menghapus: $e');
-              }
+              _bg(_logs.doc(_ids[index]).delete(), 'Gagal menghapus');
+              await _muat();
             },
             child: const Text('Hapus', style: TextStyle(color: Colors.red)),
           ),

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'fs_helper.dart';
 
 class ChapterProgress {
   final String nomor;
@@ -30,24 +31,14 @@ class DashboardStats {
 class StatsService {
   final _db = FirebaseFirestore.instance;
 
-  // Tunggu server maksimal 6 detik, lalu pakai data cache di HP
-  Future<QuerySnapshot<Map<String, dynamic>>> _ambil(
-      Query<Map<String, dynamic>> q) async {
-    try {
-      return await q.get().timeout(const Duration(seconds: 6));
-    } catch (_) {
-      return q.get(const GetOptions(source: Source.cache));
-    }
-  }
-
   Future<DashboardStats> load(String uid) async {
     final base = _db.collection('users').doc(uid);
 
-    // Tiga bacaan jalan bersamaan, bukan satu per satu
+    // Tiga bacaan jalan bersamaan, cache HP dulu baru server
     final hasil = await Future.wait([
-      _ambil(base.collection('chapters')),
-      _ambil(base.collection('revisions')),
-      _ambil(base.collection('logs')),
+      ambilCepat(base.collection('chapters')),
+      ambilCepat(base.collection('revisions')),
+      ambilCepat(base.collection('logs')),
     ]);
     final chapters = hasil[0];
     final revs = hasil[1];
@@ -66,7 +57,7 @@ class StatsService {
       final done = mine.where((r) => r.data()['is_done'] == true).length;
       final persen = isDone ? 1.0 : (mine.isEmpty ? 0.0 : done / mine.length);
 
-      perBab.add(ChapterProgress((data['nomor'] ?? '') as String, persen));
+      perBab.add(ChapterProgress((data['nomor'] ?? '').toString(), persen));
     }
 
     return DashboardStats(
