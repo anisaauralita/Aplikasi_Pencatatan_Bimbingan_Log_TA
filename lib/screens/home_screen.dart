@@ -1,3 +1,4 @@
+
 // Import pustaka UI Flutter dasar
 import 'package:flutter/material.dart';
 // Import package Provider untuk state management aplikasi
@@ -8,6 +9,7 @@ import '../providers/auth_provider.dart';
 import '../services/stats_service.dart';
 // Import layar Ekspor PDF agar tombol ekspor dapat berpindah ke halaman ekspor
 import 'ekspor_pdf_screen.dart';
+import 'status_bab_loader.dart';
 
 // Definisi HomeScreen sebagai StatefulWidget karena datanya dinamis (perlu dimuat dari service)
 class HomeScreen extends StatefulWidget {
@@ -73,7 +75,15 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
+  // Buka halaman Status Bab langsung, lalu muat ulang Beranda saat kembali
+  Future<void> _bukaStatusBab() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const StatusBabLoader()),
+    );
+    if (!mounted) return;
+    setState(_muat);
+  }
   // Fungsi aksi tombol Ekspor PDF: Navigasi ke EksporPdfScreen
   void _eksporPdf() {
     Navigator.push(
@@ -333,7 +343,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
               ),
               InkWell(
-                onTap: widget.onLihatStatusBab,
+                onTap: _bukaStatusBab,
                 child: const Padding(
                   padding: EdgeInsets.symmetric(vertical: 4),
                   child: Text('Lihat Status Bab >',
