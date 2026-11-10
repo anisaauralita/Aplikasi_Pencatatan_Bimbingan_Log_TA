@@ -17,9 +17,9 @@ class Bab {
   bool get acc => status == 'Selesai';
 
   /// 0.0 - 1.0
-  double get progresRevisi =>
-      revisiTotal == 0 ? 0 : (revisiSelesai / revisiTotal).clamp(0.0, 1.0);
-
+double get progresRevisi => acc
+    ? 1.0
+    : (revisiTotal == 0 ? 0 : (revisiSelesai / revisiTotal).clamp(0.0, 1.0));
   Bab copyWith({
     String? nama,
     String? status,

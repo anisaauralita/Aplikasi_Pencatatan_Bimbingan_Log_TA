@@ -30,12 +30,28 @@ class DashboardStats {
 class StatsService {
   final _db = FirebaseFirestore.instance;
 
+  // Tunggu server maksimal 6 detik, lalu pakai data cache di HP
+  Future<QuerySnapshot<Map<String, dynamic>>> _ambil(
+      Query<Map<String, dynamic>> q) async {
+    try {
+      return await q.get().timeout(const Duration(seconds: 6));
+    } catch (_) {
+      return q.get(const GetOptions(source: Source.cache));
+    }
+  }
+
   Future<DashboardStats> load(String uid) async {
     final base = _db.collection('users').doc(uid);
 
-    final chapters = await base.collection('chapters').get();
-    final revs = await base.collection('revisions').get();
-    final logs = await base.collection('logs').get();
+    // Tiga bacaan jalan bersamaan, bukan satu per satu
+    final hasil = await Future.wait([
+      _ambil(base.collection('chapters')),
+      _ambil(base.collection('revisions')),
+      _ambil(base.collection('logs')),
+    ]);
+    final chapters = hasil[0];
+    final revs = hasil[1];
+    final logs = hasil[2];
 
     int babSelesai = 0;
     final perBab = <ChapterProgress>[];

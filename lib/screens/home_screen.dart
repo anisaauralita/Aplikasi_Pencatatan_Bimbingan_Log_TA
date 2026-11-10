@@ -63,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ====================== BUILD ======================
   @override
   Widget build(BuildContext context) {
     final nama =
@@ -163,63 +164,71 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _kartuProgresTotal(DashboardStats s) {
     final persen = (s.progresTotal * 100).round();
     return _card(
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('STATUS PROGRES',
-                    style: TextStyle(
-                        color: _primary,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5)),
-                const SizedBox(height: 6),
-                const Text('Progres Total Tugas Akhir',
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        height: 1.25)),
-                const SizedBox(height: 6),
-                Text('${s.babSelesai} dari ${s.totalBab} bab selesai',
-                    style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 82,
-            height: 82,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: 82,
-                  height: 82,
-                  child: CircularProgressIndicator(
-                    value: s.progresTotal,
-                    strokeWidth: 10,
-                    color: _primary,
-                    backgroundColor: const Color(0xFFEEF0FF),
-                  ),
-                ),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Ukuran donut mengikuti lebar kartu (min 72, maks 120)
+          final ukuran =
+              (constraints.maxWidth * 0.30).clamp(72.0, 120.0).toDouble();
+          return Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('$persen%',
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.w800)),
-                    Text('Selesai',
+                    const Text('STATUS PROGRES',
                         style: TextStyle(
-                            fontSize: 9, color: Colors.grey.shade600)),
+                            color: _primary,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5)),
+                    const SizedBox(height: 6),
+                    const Text('Progres Total Tugas Akhir',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            height: 1.25)),
+                    const SizedBox(height: 6),
+                    Text('${s.babSelesai} dari ${s.totalBab} bab selesai',
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.grey.shade600)),
                   ],
                 ),
-              ],
-            ),
-          ),
-        ],
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: ukuran,
+                height: ukuran,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: ukuran,
+                      height: ukuran,
+                      child: CircularProgressIndicator(
+                        value: s.progresTotal,
+                        strokeWidth: ukuran * 0.12,
+                        color: _primary,
+                        backgroundColor: const Color(0xFFEEF0FF),
+                      ),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('$persen%',
+                            style: TextStyle(
+                                fontSize: ukuran * 0.22,
+                                fontWeight: FontWeight.w800)),
+                        Text('Selesai',
+                            style: TextStyle(
+                                fontSize: 9, color: Colors.grey.shade600)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -247,9 +256,12 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(icon, size: 20, color: _primary),
             const SizedBox(height: 6),
-            Text(nilai,
-                style:
-                    const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(nilai,
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.w800)),
+            ),
             const SizedBox(height: 2),
             Text(label,
                 style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
@@ -270,8 +282,12 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Progres per Bab',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+              const Flexible(
+                child: Text('Progres per Bab',
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+              ),
               InkWell(
                 onTap: widget.onLihatStatusBab,
                 child: const Padding(
@@ -346,39 +362,51 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           SizedBox(
             height: 16,
-            child: Text('$persen%',
-                style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w700,
-                    color: persen == 0 ? Colors.grey.shade500 : _primary)),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text('$persen%',
+                  style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                      color: persen == 0 ? Colors.grey.shade500 : _primary)),
+            ),
           ),
           const SizedBox(height: 4),
           Expanded(
-            child: SizedBox(
-              width: 26,
-              child: Stack(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F2F8),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: FractionallySizedBox(
-                      heightFactor: p,
-                      widthFactor: 1,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: _primary,
-                          borderRadius: BorderRadius.circular(6),
+            // Lebar batang mengikuti ruang yang tersedia (18 - 44 px)
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final lebarBatang =
+                    (c.maxWidth * 0.6).clamp(18.0, 44.0).toDouble();
+                return Center(
+                  child: SizedBox(
+                    width: lebarBatang,
+                    child: Stack(
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F2F8),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
                         ),
-                      ),
+                        Align(
+                          alignment: Alignment.bottomCenter,
+                          child: FractionallySizedBox(
+                            heightFactor: p,
+                            widthFactor: 1,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: _primary,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                );
+              },
             ),
           ),
           const SizedBox(height: 6),

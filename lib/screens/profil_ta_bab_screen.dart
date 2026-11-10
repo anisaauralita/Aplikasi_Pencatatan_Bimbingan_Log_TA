@@ -1,4 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import 'edit_judul_ta_screen.dart';
 import 'tambah_bab_screen.dart';
 import 'bab_model.dart';
@@ -14,18 +17,24 @@ class ProfilTaBabScreen extends StatefulWidget {
 class _ProfilTaBabScreenState extends State<ProfilTaBabScreen> {
   static const _primary = Color(0xFF4338CA);
 
-  String judul =
-      'Aplikasi Presensi Pegawai Menggunakan Fitur Geofencing Berbasis Android';
-  String dosen = 'Dr. Ir. Hendra Wijaya, M.T.';
+  late final String _uid;
+  DocumentReference<Map<String, dynamic>> get _base =>
+      FirebaseFirestore.instance.collection('users').doc(_uid);
 
-  // Data dummy dulu. Nanti ganti dengan data dari database_helper.dart
-  final List<Bab> daftarBab = [
-    const Bab('Bab 1 - Pendahuluan', 'Selesai', revisiSelesai: 3, revisiTotal: 3),
-    const Bab('Bab 2 - Tinjauan Pustaka', 'Selesai', revisiSelesai: 3, revisiTotal: 3),
-    const Bab('Bab 3 - Metodologi Penelitian', 'Berjalan', revisiSelesai: 1, revisiTotal: 4),
-    const Bab('Bab 4 - Hasil dan Pembahasan', 'Belum', revisiSelesai: 0, revisiTotal: 1),
-    const Bab('Bab 5 - Penutup', 'Belum', revisiSelesai: 0, revisiTotal: 1),
-  ];
+  String judul = 'Belum diisi';
+  String dosen = 'Belum diisi';
+
+  final List<Bab> daftarBab = [];
+  List<String> _ids = []; // id dokumen Firestore, urutannya sama dengan daftarBab
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _uid = context.read<AuthProvider>().currentUser!.id;
+    _muat();
+  }
 
   // ---------- Helper nomor & nama bab ----------
   int _nomorBab(Bab b) {
@@ -36,6 +45,59 @@ class _ProfilTaBabScreenState extends State<ProfilTaBabScreen> {
   String _namaTanpaNomor(Bab b) {
     final i = b.nama.indexOf(' - ');
     return i == -1 ? b.nama : b.nama.substring(i + 3);
+  }
+
+  // ---------- Firestore ----------
+    Future<void> _muat() async {
+    try {
+      final hasilBaca = await Future.wait([
+        _base.get(),
+        _base.collection('chapters').get(),
+        _base.collection('revisions').get(),
+      ]);
+      final userDoc = hasilBaca[0] as DocumentSnapshot<Map<String, dynamic>>;
+      final chapters = hasilBaca[1] as QuerySnapshot<Map<String, dynamic>>;
+      final revs = hasilBaca[2] as QuerySnapshot<Map<String, dynamic>>;
+
+
+      final items = <(String, Bab)>[];
+      for (final c in chapters.docs) {
+        final d = c.data();
+        final nomor = (d['nomor'] ?? '').toString();
+        final namaBab = (d['judul'] ?? '').toString();
+        final mine =
+            revs.docs.where((r) => r.data()['chapter_id'] == c.id).toList();
+        final done =
+            mine.where((r) => r.data()['is_done'] == true).length;
+        final isDone = d['is_done'] == true;
+        final status = isDone ? 'Selesai' : (done > 0 ? 'Berjalan' : 'Belum');
+        items.add((
+          c.id,
+          Bab('$nomor - $namaBab', status,
+              revisiSelesai: done, revisiTotal: mine.length),
+        ));
+      }
+      items.sort((a, b) => _nomorBab(a.$2).compareTo(_nomorBab(b.$2)));
+
+      if (!mounted) return;
+      final u = userDoc.data();
+      setState(() {
+        judul = (u?['judul_ta'] ?? 'Belum diisi').toString();
+        dosen = (u?['dosen'] ?? 'Belum diisi').toString();
+        _ids = items.map((e) => e.$1).toList();
+        daftarBab
+          ..clear()
+          ..addAll(items.map((e) => e.$2));
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
   }
 
   @override
@@ -50,124 +112,159 @@ class _ProfilTaBabScreenState extends State<ProfilTaBabScreen> {
       ),
       child: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: const [
-                Text('Profil TA & Bab',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold)),
-                Icon(Icons.more_vert, color: Colors.white),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Kartu profil TA
-            _card(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        // Di layar lebar, konten dibatasi 640 px dan dipusatkan
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: RefreshIndicator(
+              onRefresh: _muat,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                 children: [
+                  // Header
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('JUDUL TUGAS AKHIR',
+                    children: const [
+                      Text('Profil TA & Bab',
                           style: TextStyle(
-                              color: _primary,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.5)),
-                      OutlinedButton.icon(
-                        onPressed: _editProfil,
-                        icon: const Icon(Icons.edit, size: 12),
-                        label:
-                            const Text('Edit', style: TextStyle(fontSize: 12)),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: _primary,
-                          side: const BorderSide(color: _primary),
-                          shape: const StadiumBorder(),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold)),
+                      Icon(Icons.more_vert, color: Colors.white),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(judul,
-                      style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                          height: 1.3)),
-                  const Divider(height: 28),
-                  const Text('DOSEN PEMBIMBING',
-                      style: TextStyle(
-                          color: Colors.grey,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.5)),
-                  const SizedBox(height: 4),
-                  Text(dosen,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 16),
+
+                  // Kartu profil TA
+                  _card(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('JUDUL TUGAS AKHIR',
+                                style: TextStyle(
+                                    color: _primary,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.5)),
+                            OutlinedButton.icon(
+                              onPressed: _editProfil,
+                              icon: const Icon(Icons.edit, size: 12),
+                              label: const Text('Edit',
+                                  style: TextStyle(fontSize: 12)),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: _primary,
+                                side: const BorderSide(color: _primary),
+                                shape: const StadiumBorder(),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(judul,
+                            style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                                height: 1.3)),
+                        const Divider(height: 28),
+                        const Text('DOSEN PEMBIMBING',
+                            style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.5)),
+                        const SizedBox(height: 4),
+                        Text(dosen,
+                            style: const TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Daftar Bab + tombol
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Daftar Bab',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold)),
+                      ),
+                      _pillButton(Icons.checklist, 'Status Bab',
+                          filled: false, onTap: _statusBab),
+                      const SizedBox(width: 8),
+                      _pillButton(Icons.add, 'Tambah Bab',
+                          filled: true, onTap: _tambahBab),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  if (_loading)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: Center(
+                          child:
+                              CircularProgressIndicator(color: Colors.white)),
+                    )
+                  else if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Text('Gagal memuat data:\n$_error',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white)),
+                    )
+                  else if (daftarBab.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text('Belum ada bab. Tekan "Tambah Bab".',
+                            style: TextStyle(color: Colors.white70)),
+                      ),
+                    )
+                  else
+                    ...List.generate(daftarBab.length, (i) {
+                      final bab = daftarBab[i];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _card(
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(bab.nama,
+                                        style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w700)),
+                                    const SizedBox(height: 8),
+                                    _statusChip(bab.status),
+                                  ],
+                                ),
+                              ),
+                              _iconCircle(Icons.edit, _primary,
+                                  const Color(0xFFEEF0FF), () => _editBab(i)),
+                              const SizedBox(width: 8),
+                              _iconCircle(
+                                  Icons.delete_outline,
+                                  Colors.red,
+                                  const Color(0xFFFDECEC),
+                                  () => _hapusBab(i)),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
-
-            // Daftar Bab + tombol
-            Row(
-              children: [
-                const Expanded(
-                  child: Text('Daftar Bab',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold)),
-                ),
-                _pillButton(Icons.checklist, 'Status Bab',
-                    filled: false, onTap: _statusBab),
-                const SizedBox(width: 8),
-                _pillButton(Icons.add, 'Tambah Bab',
-                    filled: true, onTap: _tambahBab),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // List bab
-            ...List.generate(daftarBab.length, (i) {
-              final bab = daftarBab[i];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _card(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(bab.nama,
-                                style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700)),
-                            const SizedBox(height: 8),
-                            _statusChip(bab.status),
-                          ],
-                        ),
-                      ),
-                      _iconCircle(Icons.edit, _primary,
-                          const Color(0xFFEEF0FF), () => _editBab(i)),
-                      const SizedBox(width: 8),
-                      _iconCircle(Icons.delete_outline, Colors.red,
-                          const Color(0xFFFDECEC), () => _hapusBab(i)),
-                    ],
-                  ),
-                ),
-              );
-            }),
-          ],
+          ),
         ),
       ),
     );
@@ -258,6 +355,12 @@ class _ProfilTaBabScreenState extends State<ProfilTaBabScreen> {
     );
   }
 
+  void _pesan(String teks) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(teks)));
+  }
+
   // ---------- Aksi ----------
   Future<void> _editProfil() async {
     final hasil = await Navigator.push<Map<String, String>>(
@@ -267,11 +370,17 @@ class _ProfilTaBabScreenState extends State<ProfilTaBabScreen> {
       ),
     );
     if (hasil == null || !mounted) return;
-    setState(() {
-      judul = hasil['judul']!;
-      dosen = hasil['dosen']!;
-    });
-    // TODO: simpan ke database
+    try {
+      await _base.set(
+          {'judul_ta': hasil['judul'], 'dosen': hasil['dosen']},
+          SetOptions(merge: true));
+      setState(() {
+        judul = hasil['judul']!;
+        dosen = hasil['dosen']!;
+      });
+    } catch (e) {
+      _pesan('Gagal menyimpan: $e');
+    }
   }
 
   Future<void> _tambahBab() async {
@@ -284,34 +393,42 @@ class _ProfilTaBabScreenState extends State<ProfilTaBabScreen> {
       ),
     );
     if (hasil == null || !mounted) return;
-    setState(() {
-      daftarBab.add(Bab('Bab ${hasil['nomor']} - ${hasil['nama']}', 'Belum'));
-      daftarBab.sort((a, b) => _nomorBab(a).compareTo(_nomorBab(b)));
-    });
-    // TODO: simpan ke database
+    try {
+      await _base.collection('chapters').add({
+        'nomor': 'Bab ${hasil['nomor']}',
+        'judul': hasil['nama'],
+        'is_done': false,
+        'created_at': FieldValue.serverTimestamp(),
+      });
+      await _muat();
+    } catch (e) {
+      _pesan('Gagal menambah bab: $e');
+    }
   }
 
   Future<void> _editBab(int index) async {
     final lama = daftarBab[index];
-    final nomorLama = _nomorBab(lama);
     final hasil = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
         builder: (_) => TambahBabScreen(
           isEdit: true,
-          nomorAwal: nomorLama,
+          nomorAwal: _nomorBab(lama),
           namaAwal: _namaTanpaNomor(lama),
           nomorTerpakai: daftarBab.map(_nomorBab).toList(),
         ),
       ),
     );
     if (hasil == null || !mounted) return;
-    setState(() {
-      daftarBab[index] = lama.copyWith(
-          nama: 'Bab ${hasil['nomor']} - ${hasil['nama']}');
-      daftarBab.sort((a, b) => _nomorBab(a).compareTo(_nomorBab(b)));
-    });
-    // TODO: update di database
+    try {
+      await _base.collection('chapters').doc(_ids[index]).update({
+        'nomor': 'Bab ${hasil['nomor']}',
+        'judul': hasil['nama'],
+      });
+      await _muat();
+    } catch (e) {
+      _pesan('Gagal mengubah bab: $e');
+    }
   }
 
   // Buka layar Status Bab (progres revisi + toggle ACC)
@@ -321,11 +438,27 @@ class _ProfilTaBabScreenState extends State<ProfilTaBabScreen> {
       MaterialPageRoute(
         builder: (_) => StatusBabScreen(
           daftarBab: List.of(daftarBab),
-          onChanged: (baru) => setState(() {
-            daftarBab
-              ..clear()
-              ..addAll(baru);
-          }),
+          onChanged: (baru) async {
+            // Simpan hanya bab yang toggle ACC-nya berubah
+            for (var i = 0; i < baru.length && i < _ids.length; i++) {
+              if (baru[i].acc != daftarBab[i].acc) {
+                try {
+                  await _base
+                      .collection('chapters')
+                      .doc(_ids[i])
+                      .update({'is_done': baru[i].acc});
+                } catch (e) {
+                  _pesan('Gagal menyimpan status: $e');
+                }
+              }
+            }
+            if (!mounted) return;
+            setState(() {
+              daftarBab
+                ..clear()
+                ..addAll(baru);
+            });
+          },
         ),
       ),
     );
@@ -343,10 +476,17 @@ class _ProfilTaBabScreenState extends State<ProfilTaBabScreen> {
             child: const Text('Batal'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              setState(() => daftarBab.removeAt(index));
-              // TODO: hapus juga dari database
+              try {
+                await _base
+                    .collection('chapters')
+                    .doc(_ids[index])
+                    .delete();
+                await _muat();
+              } catch (e) {
+                _pesan('Gagal menghapus: $e');
+              }
             },
             child: const Text('Hapus', style: TextStyle(color: Colors.red)),
           ),
