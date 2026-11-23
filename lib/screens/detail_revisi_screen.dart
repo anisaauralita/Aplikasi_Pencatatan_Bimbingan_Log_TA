@@ -1,11 +1,35 @@
+// =====================================================================
+// FILE   : lib/screens/detail_revisi_screen.dart
+// FUNGSI : Halaman DETAIL satu revisi. Dibuka saat kartu revisi di
+//          halaman "Daftar Revisi" diketuk. Di sini mahasiswa bisa:
+//            1. Melihat poin revisi (deskripsi) dari dosen
+//            2. Melihat informasi lengkap: bab, asal bimbingan, status
+//            3. Melihat FOTO BUKTI perbaikan (ketuk untuk memperbesar)
+//            4. Tombol "Edit Revisi" (ubah poin, bab, dan foto bukti)
+//               bila halaman pemanggil menyediakannya
+//            5. Menandai revisi Selesai / Belum Selesai
+//          Setiap perubahan dikirim ke halaman daftar lewat callback
+//          onChanged, lalu halaman daftar yang menyimpannya ke Firestore.
+// =====================================================================
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'revisi_model.dart';
 
 class DetailRevisiScreen extends StatefulWidget {
+  /// Data revisi yang sedang dilihat
   final Revisi revisi;
+
+  /// Tanggal bimbingan asal revisi (teks siap tampil, null = tidak dari bimbingan)
+  final String? asalBimbingan;
+
+  /// BARU: alternatif asalBimbingan berupa fungsi, supaya ikut berubah setelah revisi diedit
+  final String? Function(Revisi)? asalDari;
+
+  /// BARU: dipanggil saat tombol "Edit Revisi" ditekan; mengembalikan revisi hasil edit
+  /// (null = dibatalkan). Jika null, tombol Edit tidak ditampilkan.
+  final Future<Revisi?> Function(Revisi)? onEdit;
 
   /// Dipanggil setiap kali revisi berubah (foto ditambah / status diganti)
   final void Function(Revisi) onChanged;
@@ -14,6 +38,9 @@ class DetailRevisiScreen extends StatefulWidget {
     super.key,
     required this.revisi,
     required this.onChanged,
+    this.asalBimbingan,
+    this.asalDari,
+    this.onEdit,
   });
 
   @override
@@ -23,8 +50,7 @@ class DetailRevisiScreen extends StatefulWidget {
 class _DetailRevisiScreenState extends State<DetailRevisiScreen> {
   static const _primary = Color(0xFF4338CA);
 
-  final _picker = ImagePicker();
-  late Revisi _revisi;
+  late Revisi _revisi; // Salinan revisi yang bisa berubah di halaman ini
 
   @override
   void initState() {
@@ -32,39 +58,64 @@ class _DetailRevisiScreenState extends State<DetailRevisiScreen> {
     _revisi = widget.revisi;
   }
 
-  Future<void> _ambilFoto(ImageSource sumber) async {
-    try {
-      final hasil = await _picker.pickImage(source: sumber, imageQuality: 80);
-      if (hasil == null || !mounted) return;
-      setState(() => _revisi = _revisi.copyWith(fotoPath: hasil.path));
-      widget.onChanged(_revisi);
-      // TODO: simpan path foto ke database
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Gagal mengambil foto. Cek izin kamera.')),
-      );
-    }
+  // Teks asal bimbingan (diambil dari fungsi asalDari jika ada)
+  String? get _asal =>
+      widget.asalDari != null ? widget.asalDari!(_revisi) : widget.asalBimbingan;
+
+  // Buka form edit (poin, bab, foto), lalu perbarui tampilan dengan hasilnya
+  Future<void> _edit() async {
+    final baru = await widget.onEdit!(_revisi);
+    if (baru == null || !mounted) return;
+    setState(() => _revisi = baru);
   }
 
+  // Ubah status Selesai <-> Belum. Syarat: harus ada foto bukti dulu
   void _toggleSelesai() {
     final akanSelesai = !_revisi.selesai;
     if (akanSelesai && _revisi.fotoPath == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Tambahkan foto bukti perbaikan dulu.')),
+        SnackBar(
+            content: Text(widget.onEdit != null
+                ? 'Tambahkan foto bukti dulu lewat tombol Edit Revisi.'
+                : 'Tambahkan foto bukti dulu: buka Daftar Revisi, lalu tekan Edit.')),
       );
       return;
     }
     setState(() => _revisi = _revisi.copyWith(selesai: akanSelesai));
     widget.onChanged(_revisi);
-    // TODO: simpan status ke database
     if (akanSelesai) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Revisi ditandai selesai.')),
       );
       Navigator.pop(context);
     }
+  }
+
+  // BARU: buka foto dalam layar penuh, bisa di-zoom dengan dua jari
+  void _perbesarFoto() {
+    final path = _revisi.fotoPath;
+    if (path == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: const Text('Foto Bukti Perbaikan',
+                style: TextStyle(fontSize: 16)),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 5,
+              child: _gambar(path, BoxFit.contain),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -92,7 +143,7 @@ class _DetailRevisiScreenState extends State<DetailRevisiScreen> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                // Kartu info revisi
+                // ---- Kartu 1: deskripsi (poin revisi) + status ----
                 _card(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -100,25 +151,62 @@ class _DetailRevisiScreenState extends State<DetailRevisiScreen> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Text(_revisi.poin,
-                                style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                    height: 1.3)),
+                          const Expanded(
+                            child: Text('Deskripsi Revisi',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.grey)),
                           ),
-                          const SizedBox(width: 8),
                           _badge(selesai),
                         ],
                       ),
                       const SizedBox(height: 8),
+                      Text(_revisi.poin,
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              height: 1.4)),
+                      const SizedBox(height: 10),
                       _chipBab(_revisi.babPendek),
                     ],
                   ),
                 ),
                 const SizedBox(height: 12),
 
-                // Kartu foto bukti
+                // ---- Kartu 2 (BARU): informasi lengkap revisi ----
+                _card(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Informasi Revisi',
+                          style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 10),
+                      _baris(Icons.menu_book_outlined, 'Bab terkait',
+                          _revisi.bab),
+                      _baris(
+                          Icons.event_note_outlined,
+                          'Asal bimbingan',
+                          _asal ?? 'Tidak dari bimbingan tertentu'),
+                      _baris(
+                          selesai
+                              ? Icons.check_circle_outline
+                              : Icons.pending_outlined,
+                          'Status',
+                          selesai ? 'Selesai dikerjakan' : 'Belum selesai'),
+                      _baris(
+                          Icons.photo_camera_outlined,
+                          'Bukti perbaikan',
+                          _revisi.fotoPath == null
+                              ? 'Belum ada foto'
+                              : '1 foto terlampir'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // ---- Kartu 3: foto bukti + tombol kamera/galeri ----
                 _card(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -128,26 +216,40 @@ class _DetailRevisiScreenState extends State<DetailRevisiScreen> {
                               fontSize: 14, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 10),
                       _areaFoto(),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _tombolFoto(Icons.photo_camera_outlined,
-                                'Kamera', () => _ambilFoto(ImageSource.camera)),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _tombolFoto(Icons.photo_outlined, 'Galeri',
-                                () => _ambilFoto(ImageSource.gallery)),
-                          ),
-                        ],
-                      ),
+                      if (widget.onEdit != null) ...[
+                        const SizedBox(height: 8),
+                        Text('Untuk mengganti foto, gunakan tombol Edit Revisi.',
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.grey.shade600)),
+                      ],
                     ],
                   ),
                 ),
                 const SizedBox(height: 12),
 
-                // Tombol tandai selesai
+                // ---- Tombol Edit Revisi (hanya jika disediakan pemanggil) ----
+                if (widget.onEdit != null) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      onPressed: _edit,
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      label: const Text('Edit Revisi',
+                          style: TextStyle(fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: Colors.white.withAlpha(220),
+                        foregroundColor: _primary,
+                        side: const BorderSide(color: _primary),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+
+                // ---- Tombol tandai selesai / belum selesai ----
                 SizedBox(
                   width: double.infinity,
                   height: 48,
@@ -193,11 +295,50 @@ class _DetailRevisiScreenState extends State<DetailRevisiScreen> {
   }
 
   // ---------- Widget bantu ----------
+
+  // BARU: satu baris informasi (ikon + label kecil + nilai)
+  Widget _baris(IconData icon, String label, String nilai) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 16, color: _primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: TextStyle(
+                          fontSize: 10.5, color: Colors.grey.shade600)),
+                  const SizedBox(height: 1),
+                  Text(nilai,
+                      style: const TextStyle(
+                          fontSize: 12.5, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+
+  // BARU: menampilkan gambar. Web memakai network, Android memakai file
+  Widget _gambar(String path, BoxFit fit) {
+    final gagal = _placeholderFoto('Foto tidak dapat ditampilkan');
+    if (kIsWeb) {
+      return Image.network(path,
+          fit: fit, errorBuilder: (_, __, ___) => gagal);
+    }
+    return Image.file(File(path),
+        fit: fit, errorBuilder: (_, __, ___) => gagal);
+  }
+
+  // Kotak foto bukti; kalau ada foto, bisa diketuk untuk diperbesar
   Widget _areaFoto() {
     final path = _revisi.fotoPath;
     return Container(
       width: double.infinity,
-      height: 180,
+      height: 220,
       decoration: BoxDecoration(
         color: const Color(0xFFF4F6FA),
         borderRadius: BorderRadius.circular(12),
@@ -206,11 +347,36 @@ class _DetailRevisiScreenState extends State<DetailRevisiScreen> {
       clipBehavior: Clip.antiAlias,
       child: path == null
           ? _placeholderFoto('Belum ada foto bukti')
-          : Image.file(
-              File(path),
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) =>
-                  _placeholderFoto('Foto tidak dapat ditampilkan'),
+          : InkWell(
+              onTap: _perbesarFoto,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _gambar(path, BoxFit.cover),
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.zoom_in, size: 14, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text('Ketuk untuk memperbesar',
+                              style: TextStyle(
+                                  fontSize: 10, color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
     );
   }
@@ -223,20 +389,6 @@ class _DetailRevisiScreenState extends State<DetailRevisiScreen> {
           Text(teks,
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
         ],
-      );
-
-  Widget _tombolFoto(IconData icon, String label, VoidCallback onTap) =>
-      OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 16),
-        label: Text(label, style: const TextStyle(fontSize: 12)),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: _primary,
-          side: const BorderSide(color: _primary),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10)),
-        ),
       );
 
   Widget _badge(bool selesai) => Container(

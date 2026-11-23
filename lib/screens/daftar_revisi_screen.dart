@@ -28,6 +28,16 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
   bool _loading = true;
   String? _error;
 
+  // BARU: id log bimbingan -> tanggalnya (untuk label "Bimbingan 15 Okt" dan dropdown)
+  final Map<String, DateTime> _tglLog = {};
+
+  static const _bulan = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+  ];
+  String _tglPendek(DateTime d) => '${d.day} ${_bulan[d.month - 1]}';
+  String _tglPenuh(DateTime d) => '${d.day} ${_bulan[d.month - 1]} ${d.year}';
+
   @override
   void initState() {
     super.initState();
@@ -36,10 +46,33 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
   }
 
   // ---------- Firestore ----------
+  // BARU: muat tanggal semua log bimbingan (kalau gagal, label saja yang tidak tampil)
+  Future<void> _muatTanggalLog() async {
+    try {
+      final snap = await ambilCepat(_base.collection('logs'));
+      final peta = <String, DateTime>{};
+      for (final d in snap.docs) {
+        final t = d.data()['tanggal'];
+        if (t is Timestamp) peta[d.id] = t.toDate();
+      }
+      _tglLog
+        ..clear()
+        ..addAll(peta);
+    } catch (_) {}
+  }
+
+  // BARU: pilihan log untuk dropdown, diurutkan dari yang terbaru
+  List<OpsiLog> get _opsiLog {
+    final e = _tglLog.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return e.map((x) => OpsiLog(id: x.key, label: _tglPenuh(x.value))).toList();
+  }
+
   Future<void> _muat() async {
     try {
       final snap = await ambilCepat(
           _base.collection('revisions').orderBy('created_at', descending: true));
+      await _muatTanggalLog();
       if (!mounted) return;
       setState(() {
         _ids = snap.docs.map((d) => d.id).toList();
@@ -48,11 +81,13 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
           ..addAll(snap.docs.map((d) {
             final x = d.data();
             final foto = x['foto_path'] as String?;
+            final lid = x['log_id'] as String?;
             return Revisi(
               poin: (x['poin'] ?? '').toString(),
               bab: (x['bab'] ?? '').toString(),
               selesai: x['is_done'] == true,
               fotoPath: (foto == null || foto.isEmpty) ? null : foto,
+              logId: (lid == null || lid.isEmpty) ? null : lid,
             );
           }));
         _loading = false;
@@ -135,7 +170,12 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
     }
     final hasil = await Navigator.push<Revisi>(
       context,
-      MaterialPageRoute(builder: (_) => TambahRevisiScreen(opsiBab: namaBab)),
+      MaterialPageRoute(
+        builder: (_) => TambahRevisiScreen(
+          opsiBab: namaBab,
+          opsiLog: _opsiLog, // BARU
+        ),
+      ),
     );
     if (hasil == null || !mounted) return;
     final chapterId = await _idBab(hasil.bab);
@@ -144,6 +184,7 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
         'poin': hasil.poin,
         'bab': hasil.bab,
         'chapter_id': chapterId,
+        'log_id': hasil.logId, // BARU
         'is_done': hasil.selesai,
         'foto_path': hasil.fotoPath,
         'created_at': FieldValue.serverTimestamp(),
@@ -153,12 +194,13 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
     await _muat();
   }
 
-  Future<void> _editRevisi(Revisi r) async {
+  // Mengembalikan revisi hasil edit (null jika dibatalkan) agar halaman detail bisa ikut diperbarui
+  Future<Revisi?> _editRevisi(Revisi r) async {
     final index = daftarRevisi.indexOf(r);
-    if (index == -1) return;
+    if (index == -1) return null;
 
     final namaBab = await _daftarNamaBab();
-    if (!mounted) return;
+    if (!mounted) return null;
 
     final hasil = await Navigator.push<Revisi>(
       context,
@@ -168,10 +210,13 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
           opsiBab: namaBab,
           poinAwal: r.poin,
           babAwal: r.bab,
+          opsiLog: _opsiLog, // BARU
+          logIdAwal: r.logId, // BARU
+          fotoAwal: r.fotoPath, // BARU
         ),
       ),
     );
-    if (hasil == null || !mounted) return;
+    if (hasil == null || !mounted) return null;
 
     final chapterId = await _idBab(hasil.bab);
     _bg(
@@ -179,13 +224,22 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
         'poin': hasil.poin,
         'bab': hasil.bab,
         'chapter_id': chapterId,
+        'log_id': hasil.logId, // BARU
+        'foto_path': hasil.fotoPath, // BARU
       }),
       'Gagal mengubah revisi',
     );
-    if (!mounted) return;
-    setState(() {
-      daftarRevisi[index] = r.copyWith(poin: hasil.poin, bab: hasil.bab);
-    });
+    if (!mounted) return null;
+    // Dibuat langsung (bukan copyWith) supaya logId dan foto bisa dikosongkan kembali
+    final baru = Revisi(
+      poin: hasil.poin,
+      bab: hasil.bab,
+      selesai: r.selesai,
+      fotoPath: hasil.fotoPath, // foto bisa diganti/dihapus saat edit
+      logId: hasil.logId,
+    );
+    setState(() => daftarRevisi[index] = baru);
+    return baru;
   }
 
   void _hapusRevisi(Revisi r) {
@@ -228,6 +282,13 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
       MaterialPageRoute(
         builder: (_) => DetailRevisiScreen(
           revisi: r,
+          // Tanggal bimbingan asal revisi (null jika tidak dari bimbingan / log sudah dihapus).
+          // Berupa fungsi supaya ikut berubah setelah revisi diedit dari halaman detail.
+          asalDari: (rev) => (rev.logId == null || _tglLog[rev.logId] == null)
+              ? null
+              : _tglPenuh(_tglLog[rev.logId]!),
+          // Tombol "Edit Revisi" di halaman detail memakai form edit yang sama dengan daftar
+          onEdit: _editRevisi,
           onChanged: (baru) {
             setState(() => daftarRevisi[index] = baru);
             _bg(
@@ -350,6 +411,9 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
   }
 
   Widget _kartuRevisi(Revisi r) {
+    // BARU: tanggal bimbingan asal (null jika revisi tidak berasal dari bimbingan / log sudah dihapus)
+    final tglAsal = r.logId == null ? null : _tglLog[r.logId];
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -396,8 +460,18 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
                 Row(
                   children: [
                     const SizedBox(width: 30),
-                    _chipBab(r.babPendek),
-                    const Spacer(),
+                    // BARU: chip bab + chip bimbingan asal (turun baris otomatis jika sempit)
+                    Expanded(
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          _chipBab(r.babPendek),
+                          if (tglAsal != null)
+                            _chipLog('Bimbingan ${_tglPendek(tglAsal)}'),
+                        ],
+                      ),
+                    ),
                     if (r.fotoPath != null) ...[
                       Icon(Icons.photo_camera_outlined,
                           size: 13, color: Colors.grey.shade600),
@@ -473,5 +547,27 @@ class _DaftarRevisiScreenState extends State<DaftarRevisiScreen> {
         child: Text(teks,
             style: const TextStyle(
                 fontSize: 10, color: _primary, fontWeight: FontWeight.w600)),
+      );
+
+  // BARU: chip penanda asal bimbingan
+  Widget _chipLog(String teks) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF4DB),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.event_note_outlined,
+                size: 11, color: Color(0xFF9A6B00)),
+            const SizedBox(width: 3),
+            Text(teks,
+                style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFF9A6B00),
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
       );
 }

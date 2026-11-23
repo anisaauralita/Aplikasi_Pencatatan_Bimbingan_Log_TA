@@ -12,12 +12,16 @@ class Revisi {
   // Path/lokasi file foto bukti perbaikan dari gallery/kamera (opsional, bisa null jika belum ada foto)
   final String? fotoPath;
 
+  // BARU: id dokumen log bimbingan asal revisi ini (opsional, null = revisi tidak berasal dari bimbingan tertentu)
+  final String? logId;
+
   // Konstruktor konstan untuk inisialisasi objek Revisi
   const Revisi({
     required this.poin, // Parameter wajib diisi
     required this.bab, // Parameter wajib diisi
     this.selesai = false, // Parameter opsional dengan nilai default false
     this.fotoPath, // Parameter opsional (boleh null)
+    this.logId, // BARU: parameter opsional (boleh null)
   });
 
   /// Getter untuk mengembalikan nama bab singkat tanpa deskripsi tambahan.
@@ -34,6 +38,7 @@ class Revisi {
     String? bab, // Parameter opsional untuk memperbarui bab
     bool? selesai, // Parameter opsional untuk memperbarui status selesai
     String? fotoPath, // Parameter opsional untuk memperbarui foto bukti
+    String? logId, // BARU: parameter opsional untuk memperbarui tautan bimbingan
   }) =>
       Revisi(
         // Jika parameter baru dikirim (tidak null), gunakan nilai baru. Jika null, gunakan nilai lama (this).
@@ -41,7 +46,17 @@ class Revisi {
         bab: bab ?? this.bab,
         selesai: selesai ?? this.selesai,
         fotoPath: fotoPath ?? this.fotoPath,
+        logId: logId ?? this.logId,
       );
+}
+
+/// BARU: pilihan log bimbingan untuk dropdown "Dari Bimbingan" pada form revisi.
+/// id = id dokumen log di Firestore, label = teks yang ditampilkan (misal '15 Okt 2026').
+class OpsiLog {
+  final String id;
+  final String label;
+
+  const OpsiLog({required this.id, required this.label});
 }
 
 /// Constant List pilihan bab sementara (dummy data) sebelum dihubungkan dengan database SQLite/Firestore.

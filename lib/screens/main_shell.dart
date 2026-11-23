@@ -64,6 +64,10 @@ class _MainShellState extends State<MainShell> {
           HomeScreen(
             key: ValueKey('home-${_versi[0]}'),
             onLihatStatusBab: () => _pindah(1), // Callback jika tombol "Lihat Status Bab" di beranda ditekan
+            // BARU: callback agar kartu/tombol aksi cepat di Beranda bisa berpindah ke tab mana pun
+            // (0: Beranda, 1: Bab, 2: Bimbingan, 3: Revisi). Memakai fungsi _pindah yang sama
+            // dengan bottom navigation, jadi perilakunya identik dengan menekan menu bawah.
+            onPindahTab: _pindah,
           ),
           // Halaman 2: Status Bab (ProfilTaBabScreen)
           ProfilTaBabScreen(key: ValueKey('bab-${_versi[1]}')),
