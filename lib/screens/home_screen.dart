@@ -9,6 +9,8 @@ import '../services/stats_service.dart';
 // Import layar Ekspor PDF agar tombol ekspor dapat berpindah ke halaman ekspor
 import 'ekspor_pdf_screen.dart';
 import 'status_bab_loader.dart';
+// Halaman profil mahasiswa: dibuka dari ikon profil di header Beranda
+import 'profil_mahasiswa_screen.dart';
 
 // ---------- BARU: import untuk kartu-kartu tambahan di Beranda ----------
 // Firestore: mengambil judul TA, dosen, log terakhir, dan revisi yang belum selesai
@@ -134,6 +136,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     setState(_muat);
   }
+  // Buka halaman Profil Mahasiswa
+  void _bukaProfil() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProfilMahasiswaScreen()),
+    );
+  }
+
   // Fungsi aksi tombol Ekspor PDF: Navigasi ke EksporPdfScreen
   void _eksporPdf() {
     Navigator.push(
@@ -361,11 +371,22 @@ class _HomeScreenState extends State<HomeScreen> {
                               color: Colors.white,
                               fontSize: 16,
                               fontWeight: FontWeight.w700)),
-                      IconButton(
-                        onPressed: _keluar,
-                        icon: const Icon(Icons.logout,
-                            color: Colors.white, size: 20),
-                        tooltip: 'Keluar',
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            onPressed: _bukaProfil,
+                            icon: const Icon(Icons.account_circle_outlined,
+                                color: Colors.white, size: 22),
+                            tooltip: 'Profil',
+                          ),
+                          IconButton(
+                            onPressed: _keluar,
+                            icon: const Icon(Icons.logout,
+                                color: Colors.white, size: 20),
+                            tooltip: 'Keluar',
+                          ),
+                        ],
                       ),
                     ],
                   ),

@@ -6,19 +6,19 @@
 //               (nama, NIM, judul TA, dosen), log bimbingan, revisi,
 //               dan bab.
 //            2. Menampilkan ringkasan jumlah data + pratinjau kartu.
-//            3. Mahasiswa mengisi catatan tambahan dan tanda tangan.
+//            3. Mahasiswa mengisi catatan tambahan (opsional).
 //            4. Tombol "Ekspor ke PDF" membuat dokumen PDF berisi:
 //               identitas (nama, NIM, judul TA, dosen), ringkasan
 //               progres + PIE CHART revisi, tabel log bimbingan, tabel
 //               revisi per bab, foto bukti perbaikan, catatan, dan
-//               kolom tanda tangan.
+//               kotak pengesahan (kosong, untuk tanda tangan basah).
 //            5. Setelah jadi, mahasiswa bisa membuka/mencetak PDF atau
 //               membagikan/menyimpannya (Drive, WhatsApp, dll).
 //          Halaman ini TIDAK memakai menu bawah (Beranda/Bab/Bimbingan/
 //          Revisi) karena dibuka sebagai halaman tambahan; navigasi balik
 //          lewat panah AppBar atau tombol "Batal" / "Kembali ke Beranda".
 //          Paket yang dipakai (sudah ada di pubspec.yaml): pdf, printing,
-//          signature, cloud_firestore, provider.
+//          cloud_firestore, provider.
 // =====================================================================
 import 'dart:io';
 import 'dart:typed_data';
@@ -30,7 +30,6 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
-import 'package:signature/signature.dart';
 
 import '../providers/auth_provider.dart';
 import '../services/fs_helper.dart';
@@ -67,7 +66,7 @@ class _DataRevisi {
   }
 }
 
-// Definisi kelas EksporPdfScreen sebagai StatefulWidget karena halaman memiliki status interaktif (input, coretan, data)
+// Definisi kelas EksporPdfScreen sebagai StatefulWidget karena halaman memiliki status interaktif (input, data)
 class EksporPdfScreen extends StatefulWidget {
   const EksporPdfScreen({super.key});
 
@@ -84,13 +83,6 @@ class _EksporPdfScreenState extends State<EksporPdfScreen> {
 
   // Controller untuk membaca isi teks inputan "Catatan Tambahan"
   final TextEditingController _catatanController = TextEditingController();
-
-  // Controller untuk mengontrol coretan canvas tanda tangan
-  final SignatureController _signatureController = SignatureController(
-    penStrokeWidth: 3, // Ketebalan garis pena
-    penColor: Colors.black, // Warna tinta tanda tangan
-    exportBackgroundColor: Colors.transparent, // Latar transparan saat diekspor
-  );
 
   // ---------- Data dari Firestore ----------
   late final String _uid; // id pengguna yang sedang login
@@ -124,7 +116,6 @@ class _EksporPdfScreenState extends State<EksporPdfScreen> {
   @override
   void dispose() {
     _catatanController.dispose();
-    _signatureController.dispose();
     super.dispose();
   }
 
@@ -226,12 +217,6 @@ class _EksporPdfScreenState extends State<EksporPdfScreen> {
   // pengesahan. Semua bagian memakai GARIS TEPI TEGAS supaya rapi dan jelas.
   Future<Uint8List> _buatPdf() async {
     final doc = pw.Document(title: 'Kartu Bimbingan Tugas Akhir', author: _nama);
-
-    // --- Tanda tangan digital -> gambar PNG (jika mahasiswa menggambarnya) ---
-    final ttdBytes = _signatureController.isNotEmpty
-        ? await _signatureController.toPngBytes()
-        : null;
-    final ttdGambar = ttdBytes == null ? null : pw.MemoryImage(ttdBytes);
 
     // --- Foto bukti perbaikan -> gambar PDF (hanya yang filenya masih ada) ---
     final fotos = <({String caption, pw.MemoryImage gambar})>[];
@@ -616,7 +601,7 @@ class _EksporPdfScreenState extends State<EksporPdfScreen> {
             ),
           ),
 
-          // ===== F. Pengesahan (tanda tangan) =====
+          // ===== F. Pengesahan (kolom dibiarkan kosong untuk tanda tangan basah) =====
           bagian('F', 'PENGESAHAN'),
           pw.Table(
             border: borderTabel,
@@ -632,14 +617,7 @@ class _EksporPdfScreenState extends State<EksporPdfScreen> {
               ]),
               pw.TableRow(children: [
                 pw.Container(height: 75),
-                pw.Container(
-                  height: 75,
-                  padding: const pw.EdgeInsets.all(4),
-                  alignment: pw.Alignment.center,
-                  child: ttdGambar == null
-                      ? pw.SizedBox()
-                      : pw.Image(ttdGambar, fit: pw.BoxFit.contain),
-                ),
+                pw.Container(height: 75),
               ]),
               pw.TableRow(children: [
                 sel('( $_dosen )', rata: pw.TextAlign.center),
@@ -791,8 +769,8 @@ class _EksporPdfScreenState extends State<EksporPdfScreen> {
                   _buildStatistikCard(),
                   const SizedBox(height: 14),
 
-                  // 2. Kartu catatan tambahan + canvas tanda tangan
-                  _buildCatatanDanTandaTanganCard(),
+                  // 2. Kartu catatan tambahan
+                  _buildCatatanCard(),
                   const SizedBox(height: 14),
 
                   // 3. Kartu pratinjau kartu bimbingan
@@ -1022,8 +1000,8 @@ class _EksporPdfScreenState extends State<EksporPdfScreen> {
     );
   }
 
-  /// Form catatan tambahan + canvas tanda tangan digital
-  Widget _buildCatatanDanTandaTanganCard() {
+  /// Form catatan tambahan
+  Widget _buildCatatanCard() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1034,7 +1012,7 @@ class _EksporPdfScreenState extends State<EksporPdfScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'CATATAN & TANDA TANGAN',
+            'CATATAN TAMBAHAN',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.bold,
@@ -1062,70 +1040,6 @@ class _EksporPdfScreenState extends State<EksporPdfScreen> {
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: Colors.grey.shade200),
               ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Kotak canvas tanda tangan
-          Container(
-            height: 100,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.grey.shade300,
-                style: BorderStyle.solid,
-              ),
-            ),
-            child: Stack(
-              children: [
-                // Lapisan 1: area coretan tanda tangan
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Signature(
-                    controller: _signatureController,
-                    height: 100,
-                    backgroundColor: Colors.transparent,
-                  ),
-                ),
-                // Lapisan 2: teks petunjuk di tengah kanvas
-                IgnorePointer(
-                  child: Center(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.edit, size: 16, color: Colors.grey.shade400),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Tanda tangan di sini',
-                          style: TextStyle(
-                              color: Colors.grey.shade400, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                // Lapisan 3: tombol Hapus coretan
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: OutlinedButton(
-                    onPressed: () => _signatureController.clear(),
-                    style: OutlinedButton.styleFrom(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      side: BorderSide(color: Colors.grey.shade300),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    ),
-                    child: const Text('Hapus',
-                        style: TextStyle(fontSize: 11, color: Colors.grey)),
-                  ),
-                ),
-              ],
             ),
           ),
         ],
